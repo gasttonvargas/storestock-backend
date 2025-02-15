@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config(); 
 
 // Importar dependencias principales
 const express = require("express");
@@ -26,11 +26,11 @@ connectDB();
 // Definir rutas de la API
 app.use("/api/products", productRoutes); // Rutas de productos
 app.use("/api/categories", categoryRoutes); // Rutas de categorías
-app.use("/api/users", userRoutes); // Rutas de usuarios (registro, login)
+app.use("/api/users", userRoutes); // Rutas de usuarios (registro, login, etc.)
 app.use("/api/sales", salesRoutes); // Rutas de ventas (empleados y admin)
 app.use("/api/cart", cartRoutes); // Rutas del carrito de compras (clientes)
 
-// Ruta base de prueba
+// Ruta base para probar si la API está funcionando
 app.get("/", (req, res) => {
   res.send("API funcionando correctamente");
 });
