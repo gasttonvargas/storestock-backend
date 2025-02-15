@@ -3,7 +3,7 @@ const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-// Configuración de Nodemailer para enviar correos electrónicos usando Mailtrap
+// Configuración de Nodemailer (Mailtrap)
 const transporter = nodemailer.createTransport({
   host: "sandbox.smtp.mailtrap.io",
   port: 2525,
@@ -13,58 +13,55 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Función para enviar el correo de bienvenida al usuario
+// Enviar correo de bienvenida
 const sendWelcomeEmail = async (email, name) => {
   const mailOptions = {
-    from: "DespensaÑOÑO <no-reply@despensanono.com>", // Remitente ficticio
-    to: email, // Correo del usuario
+    from: "DespensaÑOÑO <no-reply@despensanono.com>",
+    to: email,
     subject: "Bienvenido a DespensaÑOÑO",
-    text: `¡Hola ${name}!\n\nGracias por registrarte en DespensaÑOÑO. Para tu seguridad, te recomendamos cambiar tu contraseña después de iniciar sesión.\n\n¡Bienvenido a nuestra comunidad!\n\nSaludos,\nEl equipo de DespensaÑOÑO`,
+    text: `¡Hola ${name}!\n\nGracias por registrarte en DespensaÑOÑO. Para tu seguridad, te recomendamos cambiar tu contraseña después de iniciar sesión.\n\nSaludos,\nEl equipo de DespensaÑOÑO`,
   };
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log("Correo de bienvenida enviado");
+    console.log("Correo de bienvenida enviado a:", email);
   } catch (error) {
-    console.error("Error al enviar el correo:", error);
-    throw new Error("No se pudo enviar el correo de bienvenida.");
+    console.error("Error al enviar el correo:", error.message);
   }
 };
 
-// Registrar un nuevo usuario
+// Registrar usuario
 const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
-
-    // Validación de los campos
     if (!name || !email || !password) {
-      return res.status(400).json({ message: "Por favor ingresa todos los campos requeridos." });
+      return res
+        .status(400)
+        .json({ message: "Todos los campos son obligatorios." });
     }
 
-    // Verificar si el usuario ya existe
     const userExists = await User.findOne({ email });
-    if (userExists) return res.status(400).json({ message: "El usuario ya existe" });
+    if (userExists) {
+      return res.status(400).json({ message: "El usuario ya existe." });
+    }
 
-    // Encriptar la contraseña
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    // Convertir el email a minúsculas antes de guardarlo
+    const emailLowerCase = email.toLowerCase();
 
-    // Crear el nuevo usuario
     const newUser = new User({
       name,
-      email,
-      password: hashedPassword,
+      email: emailLowerCase, // Guardar en minúsculas
+      password: password, // <-- ¡NO HASHEAR AQUÍ!
+      role: "cliente", // Rol por defecto
     });
 
     await newUser.save();
-
-    // Enviar el correo de bienvenida
     await sendWelcomeEmail(email, name);
 
-    res.status(201).json({ message: "Usuario registrado exitosamente, se ha enviado un correo con las credenciales." });
+    res.status(201).json({ message: "Usuario registrado con éxito." });
   } catch (error) {
-    console.error("Error al registrar el usuario:", error);
-    res.status(500).json({ message: `Ocurrió un error al registrar el usuario: ${error.message}` });
+    console.error("Error en registro:", error.message);
+    res.status(500).json({ message: "Error al registrar el usuario." });
   }
 };
 
@@ -72,71 +69,82 @@ const registerUser = async (req, res) => {
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    console.log("Recibiendo datos para login:", { email, password });
-
-    // Verificar que el correo y la contraseña estén presentes
     if (!email || !password) {
-      return res.status(400).json({ message: "Correo o contraseña no proporcionados." });
+      return res
+        .status(400)
+        .json({ message: "Correo y contraseña requeridos." });
     }
 
-    // Buscar el usuario por correo
-    const user = await User.findOne({ email });
+    // Eliminar espacios en blanco y convertir a minúsculas
+    const emailTrimmed = email.trim().toLowerCase();
+    const passwordTrimmed = password.trim();
+
+    const user = await User.findOne({ email: emailTrimmed });
+
+    console.log("Usuario encontrado:", user); // Log para depuración
+
     if (!user) {
-      console.log("Usuario no encontrado");
-      return res.status(400).json({ message: "Credenciales incorrectas" });
+      console.log("Usuario no encontrado con el email:", emailTrimmed);
+      return res.status(400).json({ message: "Credenciales incorrectas." });
     }
 
-    // Verificar la contraseña con bcrypt
-    const isPasswordCorrect = await bcrypt.compare(password, user.password);
+    // Imprimir los valores justo antes de bcrypt.compare()
+    console.log("Contraseña ingresada:", passwordTrimmed);
+    console.log("Contraseña hasheada almacenada:", user.password);
 
-    console.log("Contraseña ingresada:", password);
-    console.log("Contraseña almacenada en DB:", user.password);
-    console.log("Comparación de contraseñas:", isPasswordCorrect);
+    // Verificar la contraseña
+    const isPasswordCorrect = await bcrypt.compare(passwordTrimmed, user.password);
+
+    console.log("Resultado de bcrypt.compare:", isPasswordCorrect); // Log para depuración
 
     if (!isPasswordCorrect) {
-      console.log("Contraseña incorrecta");
-      return res.status(400).json({ message: "Credenciales incorrectas" });
+      console.log("Contraseña incorrecta para el usuario:", emailTrimmed);
+      return res.status(400).json({ message: "Credenciales incorrectas." });
     }
 
-    // Crear el token JWT
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    // Generar token JWT
+    const token = jwt.sign(
+      { userId: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
 
-    // Responder con el token y un mensaje de éxito
-    res.status(200).json({ message: "Inicio de sesión exitoso", token });
+    res.status(200).json({ message: "Inicio de sesión exitoso.", token });
   } catch (error) {
-    console.error("Error al iniciar sesión:", error);
-    res.status(500).json({ message: "Ocurrió un error al iniciar sesión" });
+    console.error("Error en login:", error.message);
+    res.status(500).json({ message: "Error al iniciar sesión." });
   }
 };
 
-// Cambiar el rol de un usuario (solo admin)
+// Cambiar rol de usuario (requiere ser admin)
 const changeUserRole = async (req, res) => {
   try {
     const { userId, newRole } = req.body;
+    const validRoles = ["admin", "empleado", "cliente"];
 
-    // Verificar que el rol proporcionado sea válido
-    if (!["admin", "empleado", "cliente"].includes(newRole)) {
-      return res.status(400).json({ message: "Rol no válido" });
+    if (!validRoles.includes(newRole)) {
+      return res.status(400).json({ message: "Rol no válido." });
     }
 
-    // Verificar que el usuario que hace la solicitud sea un admin
     if (req.user.role !== "admin") {
-      return res.status(403).json({ message: "Solo un administrador puede hacer esto" });
+      return res
+        .status(403)
+        .json({
+          message:
+            "Acceso denegado. Solo administradores pueden cambiar roles.",
+        });
     }
 
-    // Buscar el usuario por ID
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "Usuario no encontrado" });
+    if (!user) return res.status(404).json({ message: "Usuario no encontrado." });
 
-    // Cambiar el rol del usuario
     user.role = newRole;
     await user.save();
 
-    res.status(200).json({ message: "Rol actualizado exitosamente" });
+    res.status(200).json({ message: "Rol actualizado correctamente." });
   } catch (error) {
-    console.error("Error al cambiar el rol:", error);
-    res.status(500).json({ message: "Ocurrió un error al cambiar el rol del usuario" });
+    console.error("Error al cambiar el rol:", error.message);
+    res.status(500).json({ message: "Error al actualizar el rol." });
   }
 };
 

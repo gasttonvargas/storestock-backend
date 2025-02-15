@@ -15,6 +15,8 @@ const userSchema = new mongoose.Schema({
   password: {
     type: String,
     required: true,
+    // Eliminar minlength si deseas permitir contraseñas más cortas
+    // minlength: 60  
   },
   role: {
     type: String,
@@ -30,10 +32,16 @@ const userSchema = new mongoose.Schema({
 
 // Encriptar la contraseña antes de guardar
 userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();  // Si no se modifica la contraseña, no la encriptamos
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
-  next();
+  if (this.isNew || this.isModified("password")) {
+    try {
+      const salt = await bcrypt.genSalt(10);
+      this.password = await bcrypt.hash(this.password, salt);
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  }
+  return next(); // No hacer nada si la contraseña no se ha modificado
 });
 
 // Método para comparar contraseñas encriptadas
